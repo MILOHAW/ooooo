@@ -1,0 +1,2376 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken, 
+  onAuthStateChanged,
+  signOut
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
+import { 
+  Hash, Volume2, Plus, Settings, Mic, MicOff, Headphones, 
+  MessageSquare, Users, Search, Bell, Pin, UserPlus, 
+  Smile, Image, Send, Phone, Video, PhoneOff, ShieldCheck, 
+  ChevronDown, X, Circle, Sparkles, Monitor, Radio, Compass,
+  Paperclip, ThumbsUp, Heart, Laugh, MoreVertical, Check, Trash2,
+  UserCheck, UserX, Copy, Link, CheckCircle2, AlertCircle, Upload,
+  Zap, Crown, Palette, Sparkle, Flame, Award, LogOut, Lock, Mail, User,
+  Rocket, Gem, Shield
+} from 'lucide-react';
+
+// --- FIREBASE INITIALIZATION ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  apiKey: "demo-api-key",
+  authDomain: "demo.firebaseapp.com",
+  projectId: "demo-project",
+  storageBucket: "demo.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:123456"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'discord-clone-app';
+
+// --- NITRO BADGE ICONS & AVATAR FRAMES CONFIG ---
+const NITRO_BADGES = [
+  { id: 'zap', name: 'Nitro Zap', icon: Zap, color: 'text-pink-400' },
+  { id: 'booster', name: 'Server Booster', icon: Rocket, color: 'text-[#f47be7]' },
+  { id: 'diamond', name: 'Early Supporter', icon: Gem, color: 'text-cyan-400' },
+  { id: 'hypesquad', name: 'HypeSquad', icon: Shield, color: 'text-amber-400' },
+  { id: 'crown', name: 'Nitro King', icon: Crown, color: 'text-yellow-300' }
+];
+
+const NITRO_FRAMES = [
+  { id: 'none', name: 'None', class: '' },
+  { id: 'neon', name: 'Neon Pink', class: 'ring-2 ring-pink-500 shadow-[0_0_12px_rgba(236,72,153,0.8)]' },
+  { id: 'sakura', name: 'Sakura Petals', class: 'ring-2 ring-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.8)]' },
+  { id: 'gold', name: 'Gold Flame', class: 'ring-2 ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.8)]' },
+  { id: 'cyber', name: 'Cyberpunk Cyan', class: 'ring-2 ring-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]' }
+];
+
+const renderNitroBadgeIcon = (badgeType = 'zap', className = "w-3 h-3 text-pink-400") => {
+  switch (badgeType) {
+    case 'booster':
+      return <Rocket className={className} />;
+    case 'diamond':
+      return <Gem className={className} />;
+    case 'hypesquad':
+      return <Shield className={className} />;
+    case 'crown':
+      return <Crown className={className} />;
+    case 'zap':
+    default:
+      return <Zap className={className} />;
+  }
+};
+
+const getAvatarFrameClass = (frameType = 'none') => {
+  const found = NITRO_FRAMES.find(f => f.id === frameType);
+  return found ? found.class : '';
+};
+
+// --- HELPER COMPONENT: LETTER AVATAR OR IMAGE ---
+const Avatar = ({ src, name = 'User', className = "w-8 h-8 text-sm", frameClass = "" }) => {
+  const isImageSrc = src && (src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://'));
+  const initialLetter = (name && name.trim().length > 0 ? name.trim()[0] : 'U').toUpperCase();
+
+  // Consistent color generated from name
+  const colors = [
+    'bg-indigo-600', 'bg-[#5865f2]', 'bg-pink-600', 'bg-emerald-600', 
+    'bg-amber-600', 'bg-cyan-600', 'bg-purple-600', 'bg-rose-600'
+  ];
+  let charCodeSum = 0;
+  for (let i = 0; i < name.length; i++) charCodeSum += name.charCodeAt(i);
+  const bgColor = colors[charCodeSum % colors.length];
+
+  if (isImageSrc) {
+    return (
+      <img 
+        src={src} 
+        alt={name} 
+        className={`${className} rounded-full object-cover ${frameClass}`} 
+      />
+    );
+  }
+
+  return (
+    <div 
+      className={`${className} rounded-full flex items-center justify-center font-bold text-white uppercase select-none ${bgColor} ${frameClass}`}
+    >
+      {initialLetter}
+    </div>
+  );
+};
+
+// --- NITRO THEMES SYSTEM ---
+const THEMES = {
+  dark: {
+    id: 'dark',
+    name: 'Classic Dark',
+    accent: '#5865f2',
+    mainBg: '#313338',
+    sidebarBg: '#2b2d31',
+    serverBg: '#1e1f22',
+    headerBg: '#313338',
+    cardBg: '#2b2d31',
+    inputBg: '#383a40',
+    border: '#1f2023',
+    text: '#dbdee1'
+  },
+  midnight: {
+    id: 'midnight',
+    name: 'Midnight AMOLED',
+    accent: '#7289da',
+    mainBg: '#000000',
+    sidebarBg: '#090a0c',
+    serverBg: '#040405',
+    headerBg: '#000000',
+    cardBg: '#0e1015',
+    inputBg: '#12141a',
+    border: '#161820',
+    text: '#e1e3e6'
+  },
+  cyberpunk: {
+    id: 'cyberpunk',
+    name: 'Cyberpunk Neon',
+    accent: '#f706cf',
+    mainBg: '#0c0714',
+    sidebarBg: '#130c21',
+    serverBg: '#07040d',
+    headerBg: '#0c0714',
+    cardBg: '#1a102e',
+    inputBg: '#23153d',
+    border: '#f706cf44',
+    text: '#00f0ff'
+  },
+  sakura: {
+    id: 'sakura',
+    name: 'Sakura Blossom',
+    accent: '#ff75a0',
+    mainBg: '#1c1319',
+    sidebarBg: '#281a24',
+    serverBg: '#140c12',
+    headerBg: '#1c1319',
+    cardBg: '#2e1e29',
+    inputBg: '#382532',
+    border: '#ff75a044',
+    text: '#fce4ec'
+  },
+  gold: {
+    id: 'gold',
+    name: 'Nitro Gold',
+    accent: '#f0b232',
+    mainBg: '#18140c',
+    sidebarBg: '#241e12',
+    serverBg: '#100d08',
+    headerBg: '#18140c',
+    cardBg: '#2a2315',
+    inputBg: '#362d1b',
+    border: '#f0b23244',
+    text: '#fff8e7'
+  },
+  emerald: {
+    id: 'emerald',
+    name: 'Emerald Forest',
+    accent: '#23a55a',
+    mainBg: '#0c1a13',
+    sidebarBg: '#12261c',
+    serverBg: '#08120d',
+    headerBg: '#0c1a13',
+    cardBg: '#173325',
+    inputBg: '#1d4230',
+    border: '#23a55a44',
+    text: '#e8f8f0'
+  }
+};
+
+// --- WEB AUDIO SYNTHESIZED SOUND EFFECTS ---
+const playWebAudioSound = (type) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+
+    if (type === 'quack') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } else if (type === 'airhorn') {
+      [370, 466, 554].forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      });
+    } else if (type === 'gg') {
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.08);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.08 + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.08);
+        osc.stop(ctx.currentTime + idx * 0.08 + 0.3);
+      });
+    } else if (type === 'laser') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } else if (type === 'levelup') {
+      [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.07);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + idx * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + idx * 0.07 + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.07);
+        osc.stop(ctx.currentTime + idx * 0.07 + 0.25);
+      });
+    } else if (type === 'boom') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(160, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.5);
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } else if (type === 'join') {
+      const notes = [440, 880];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + idx * 0.1 + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.1);
+        osc.stop(ctx.currentTime + idx * 0.1 + 0.2);
+      });
+    } else if (type === 'leave') {
+      const notes = [880, 440];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + idx * 0.1 + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.1);
+        osc.stop(ctx.currentTime + idx * 0.1 + 0.2);
+      });
+    }
+  } catch (err) {
+    console.warn("Audio playback issue:", err);
+  }
+};
+
+const SOUNDS = [
+  { name: 'Quack 🦆', emoji: '🦆', type: 'quack' },
+  { name: 'Airhorn 🎺', emoji: '🎺', type: 'airhorn' },
+  { name: 'Applause 👏', emoji: '👏', type: 'applause' },
+  { name: 'GG Chime 🎮', emoji: '🎮', type: 'gg' },
+  { name: 'Laser Beam ⚡', emoji: '⚡', type: 'laser' },
+  { name: 'Level Up 🌟', emoji: '🌟', type: 'levelup' },
+  { name: 'BOOM 💣', emoji: '💣', type: 'boom' }
+];
+
+export default function App() {
+  // --- AUTH & USER STATE ---
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isLoggedInSession, setIsLoggedInSession] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  
+  // Auth Form Fields
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+
+  // --- PROFILE STATE ---
+  const [userProfile, setUserProfile] = useState({
+    name: 'User',
+    avatar: '', // Default to letter avatar
+    banner: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=200&fit=crop',
+    status: 'online',
+    customStatus: 'Free Nitro Activated! 🚀',
+    isNitro: true,
+    nitroBadge: 'zap', // 'zap' | 'booster' | 'diamond' | 'hypesquad' | 'crown'
+    nitroFrame: 'neon', // 'none' | 'neon' | 'sakura' | 'gold' | 'cyber'
+    nitroGlow: true,
+    theme: 'dark'
+  });
+
+  // --- APP STATE ---
+  const [servers, setServers] = useState([]);
+  const [activeServerId, setActiveServerId] = useState('dm');
+  const [activeChannelId, setActiveChannelId] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+
+  // DM / Friends Navigation
+  const [activeDmUser, setActiveDmUser] = useState(null);
+  const [friendsTab, setFriendsTab] = useState('online');
+  const [friendSearchInput, setFriendSearchInput] = useState('');
+  const [friendActionStatus, setFriendActionStatus] = useState({ type: '', msg: '' });
+
+  // Chat Input State
+  const [inputText, setInputText] = useState('');
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Voice/Video Call State
+  const [inCall, setInCall] = useState(false);
+  const [callChannelName, setCallChannelName] = useState('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  // Modals & UI Controls
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [showAddChannel, setShowAddChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [newChannelType, setNewChannelType] = useState('text');
+  const [newServerName, setNewServerName] = useState('');
+  const [newServerIcon, setNewServerIcon] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showSoundboard, setShowSoundboard] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('profile');
+
+  const chatEndRef = useRef(null);
+
+  // Active theme tokens
+  const activeTheme = THEMES[userProfile.theme] || THEMES.dark;
+
+  // --- AUTHENTICATION SESSION INIT ---
+  useEffect(() => {
+    const initAuthSession = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    initAuthSession();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- AUTH HANDLERS (Firestore Account Database) ---
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!authEmail.trim() || !authPassword.trim()) return;
+
+    setAuthError('');
+    setIsSubmittingAuth(true);
+
+    try {
+      const emailQuery = authEmail.trim().toLowerCase();
+      const existingUser = allUsers.find(u => u.email && u.email.toLowerCase() === emailQuery);
+
+      if (!existingUser) {
+        setAuthError('No account found with this email. Click "Register" to create one!');
+        setIsSubmittingAuth(false);
+        return;
+      }
+
+      if (existingUser.password !== authPassword) {
+        setAuthError('Invalid password. Please check your credentials.');
+        setIsSubmittingAuth(false);
+        return;
+      }
+
+      setUserProfile(existingUser);
+      setIsLoggedInSession(true);
+      setAuthPassword('');
+    } catch (err) {
+      console.error("Login Error:", err);
+      setAuthError('Failed to sign in. Please try again.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!authEmail.trim() || !authPassword.trim()) return;
+
+    if (authPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setAuthError('');
+    setIsSubmittingAuth(true);
+
+    try {
+      const emailQuery = authEmail.trim().toLowerCase();
+      const duplicateUser = allUsers.find(u => u.email && u.email.toLowerCase() === emailQuery);
+
+      if (duplicateUser) {
+        setAuthError('This email is already registered. Try logging in instead!');
+        setIsSubmittingAuth(false);
+        return;
+      }
+
+      if (!user) {
+        await signInAnonymously(auth);
+      }
+
+      const currentUid = auth.currentUser?.uid || `usr_${Date.now()}`;
+      const nameToUse = authDisplayName.trim() || `User_${currentUid.slice(0, 4)}`;
+
+      const newAccountObj = {
+        id: currentUid,
+        email: emailQuery,
+        password: authPassword,
+        name: nameToUse,
+        avatar: '', // Default letter avatar
+        banner: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=200&fit=crop',
+        status: 'online',
+        customStatus: 'Free Nitro Activated! 🚀',
+        isNitro: true,
+        nitroBadge: 'zap',
+        nitroFrame: 'neon',
+        nitroGlow: true,
+        theme: 'dark',
+        role: 'Member'
+      };
+
+      const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUid);
+      await setDoc(userDocRef, newAccountObj);
+
+      setUserProfile(newAccountObj);
+      setIsLoggedInSession(true);
+      setAuthPassword('');
+    } catch (err) {
+      console.error("Register Error:", err);
+      setAuthError('Failed to create account. Please try again.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setAuthError('');
+    setIsSubmittingAuth(true);
+    try {
+      if (!user) {
+        await signInAnonymously(auth);
+      }
+      const guestUid = auth.currentUser?.uid || `guest_${Date.now()}`;
+      const guestProf = {
+        id: guestUid,
+        name: `Guest_${guestUid.slice(0, 4)}`,
+        avatar: '', // Default letter avatar
+        banner: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=200&fit=crop',
+        status: 'online',
+        customStatus: 'Exploring as Guest 🚀',
+        isNitro: true,
+        nitroBadge: 'zap',
+        nitroFrame: 'neon',
+        nitroGlow: true,
+        theme: 'dark',
+        role: 'Member'
+      };
+
+      const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', guestUid);
+      await setDoc(userDocRef, guestProf, { merge: true });
+
+      setUserProfile(guestProf);
+      setIsLoggedInSession(true);
+    } catch (err) {
+      console.error("Guest login error:", err);
+      setAuthError('Failed to log in as guest.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setIsLoggedInSession(false);
+    setShowProfileSettings(false);
+  };
+
+  // --- FIRESTORE SUBSCRIPTIONS ---
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Sync Servers
+    const serversColRef = collection(db, 'artifacts', appId, 'public', 'data', 'servers');
+    const unsubServers = onSnapshot(serversColRef, (snapshot) => {
+      const loadedServers = [];
+      snapshot.forEach(docSnap => {
+        loadedServers.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setServers(loadedServers);
+    }, (err) => console.error("Error fetching servers:", err));
+
+    // 2. Sync Messages
+    const messagesColRef = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
+    const unsubMessages = onSnapshot(messagesColRef, (snapshot) => {
+      const loadedMsgs = [];
+      snapshot.forEach(docSnap => {
+        loadedMsgs.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setMessages(loadedMsgs);
+    }, (err) => console.error("Error fetching messages:", err));
+
+    // 3. Sync Public Users
+    const usersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+    const unsubUsers = onSnapshot(usersColRef, (snapshot) => {
+      const loadedUsers = [];
+      snapshot.forEach(docSnap => {
+        loadedUsers.push(docSnap.data());
+      });
+      setAllUsers(loadedUsers);
+    }, (err) => console.error("Error fetching users:", err));
+
+    // 4. Sync Friends Records
+    const friendsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'friends');
+    const unsubFriends = onSnapshot(friendsColRef, (snapshot) => {
+      const loadedFriends = [];
+      snapshot.forEach(docSnap => {
+        loadedFriends.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setFriendsList(loadedFriends);
+    }, (err) => console.error("Error fetching friends:", err));
+
+    return () => {
+      unsubServers();
+      unsubMessages();
+      unsubUsers();
+      unsubFriends();
+    };
+  }, [user]);
+
+  // Sync current user profile document in Firestore
+  useEffect(() => {
+    if (!user || !isLoggedInSession) return;
+    const currentUid = userProfile.id || user.uid;
+    const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', currentUid);
+    setDoc(userDocRef, {
+      ...userProfile,
+      id: currentUid,
+      role: 'Member'
+    }, { merge: true }).catch(err => console.error("Error syncing user profile:", err));
+  }, [user, userProfile, isLoggedInSession]);
+
+  // Auto Scroll Chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, activeChannelId, activeDmUser]);
+
+  // --- FILE UPLOAD HELPER ---
+  const handleFileUpload = (e, setter) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 3 * 1024 * 1024) {
+        alert("File size is too large (max 3MB for database storage).");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setter(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // --- DERIVED STATE ---
+  const currentServer = servers.find(s => s.id === activeServerId);
+  const currentChannel = currentServer?.channels?.find(c => c.id === activeChannelId) || currentServer?.channels?.[0];
+
+  // Friends Processing
+  const currentUid = userProfile.id || user?.uid;
+  const userFriendRecords = friendsList.filter(f => f.fromId === currentUid || f.toId === currentUid);
+  
+  const acceptedFriends = userFriendRecords
+    .filter(f => f.status === 'accepted')
+    .map(f => {
+      const friendUid = f.fromId === currentUid ? f.toId : f.fromId;
+      return allUsers.find(u => u.id === friendUid) || { 
+        id: friendUid, 
+        name: 'Discord User', 
+        status: 'offline', 
+        avatar: '' 
+      };
+    });
+
+  const pendingRequests = userFriendRecords.filter(f => f.toId === currentUid && f.status === 'pending');
+
+  // --- CHAT ACTIONS ---
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    if ((!inputText.trim() && !imageUrlInput.trim()) || !user) return;
+
+    const textToSend = inputText.trim();
+    const imageToSend = imageUrlInput.trim();
+
+    setInputText('');
+    setImageUrlInput('');
+    setShowImageModal(false);
+
+    const targetChannelId = activeServerId === 'dm' ? null : activeChannelId;
+    const targetDmUserId = activeServerId === 'dm' ? activeDmUser?.id : null;
+
+    const newMessage = {
+      author: userProfile.name,
+      authorId: currentUid,
+      avatar: userProfile.avatar || '',
+      isNitro: userProfile.isNitro,
+      nitroBadge: userProfile.nitroBadge || 'zap',
+      nitroFrame: userProfile.nitroFrame || 'neon',
+      nitroGlow: userProfile.nitroGlow,
+      text: textToSend,
+      image: imageToSend || null,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: Date.now(),
+      channelId: targetChannelId,
+      dmUserId: targetDmUserId,
+      reactions: {}
+    };
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'messages'), newMessage);
+    } catch (err) {
+      console.error("Error sending message:", err);
+    }
+  };
+
+  const handleAddReaction = async (msgId, emoji) => {
+    if (!user) return;
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return;
+
+    const reactions = { ...(msg.reactions || {}) };
+    const usersList = reactions[emoji] || [];
+
+    if (usersList.includes(currentUid)) {
+      reactions[emoji] = usersList.filter(u => u !== currentUid);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji] = [...usersList, currentUid];
+    }
+
+    try {
+      const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId);
+      await updateDoc(msgRef, { reactions });
+    } catch (err) {
+      console.error("Error toggling reaction:", err);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId) => {
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'messages', msgId));
+    } catch (err) {
+      console.error("Error deleting message:", err);
+    }
+  };
+
+  // --- FRIENDS ACTIONS ---
+  const handleSendFriendRequest = async (e) => {
+    e?.preventDefault();
+    if (!friendSearchInput.trim() || !user) return;
+
+    const targetQuery = friendSearchInput.trim().toLowerCase();
+    const foundUser = allUsers.find(u => 
+      (u.id && u.id.toLowerCase() === targetQuery) || 
+      (u.name && u.name.toLowerCase() === targetQuery) ||
+      (u.email && u.email.toLowerCase() === targetQuery)
+    );
+
+    if (!foundUser) {
+      setFriendActionStatus({ type: 'error', msg: "User not found. Check the exact User ID or Display Name." });
+      return;
+    }
+
+    if (foundUser.id === currentUid) {
+      setFriendActionStatus({ type: 'error', msg: "You cannot add yourself as a friend!" });
+      return;
+    }
+
+    const existing = friendsList.find(f => 
+      (f.fromId === currentUid && f.toId === foundUser.id) ||
+      (f.fromId === foundUser.id && f.toId === currentUid)
+    );
+
+    if (existing) {
+      setFriendActionStatus({ type: 'error', msg: `Friend relationship already exists or is pending with ${foundUser.name}.` });
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'friends'), {
+        fromId: currentUid,
+        fromName: userProfile.name,
+        fromAvatar: userProfile.avatar || '',
+        toId: foundUser.id,
+        toName: foundUser.name,
+        status: 'pending',
+        timestamp: Date.now()
+      });
+
+      setFriendActionStatus({ type: 'success', msg: `Friend request sent to ${foundUser.name}!` });
+      setFriendSearchInput('');
+    } catch (err) {
+      console.error("Error sending friend request:", err);
+      setFriendActionStatus({ type: 'error', msg: "Failed to send request." });
+    }
+  };
+
+  const handleAcceptFriendRequest = async (reqId) => {
+    try {
+      const fRef = doc(db, 'artifacts', appId, 'public', 'data', 'friends', reqId);
+      await updateDoc(fRef, { status: 'accepted' });
+    } catch (err) {
+      console.error("Error accepting friend request:", err);
+    }
+  };
+
+  const handleRejectFriendRequest = async (reqId) => {
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'friends', reqId));
+    } catch (err) {
+      console.error("Error rejecting friend request:", err);
+    }
+  };
+
+  // --- SERVER & CHANNEL CREATION ---
+  const handleCreateServer = async (e) => {
+    e.preventDefault();
+    if (!newServerName.trim() || !user) return;
+
+    const newSrvId = `srv_${Date.now()}`;
+    const newServerObj = {
+      id: newSrvId,
+      name: newServerName.trim(),
+      icon: newServerIcon,
+      ownerId: currentUid,
+      channels: [
+        { id: `c_${Date.now()}_1`, name: 'general', type: 'text' },
+        { id: `v_${Date.now()}_2`, name: 'Lobby Voice', type: 'voice' }
+      ]
+    };
+
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'servers', newSrvId), newServerObj);
+      setActiveServerId(newSrvId);
+      setActiveChannelId(newServerObj.channels[0].id);
+      setNewServerName('');
+      setShowAddServer(false);
+    } catch (err) {
+      console.error("Error creating server:", err);
+    }
+  };
+
+  const handleCreateChannel = async (e) => {
+    e.preventDefault();
+    if (!newChannelName.trim() || !currentServer) return;
+
+    const updatedChannels = [
+      ...(currentServer.channels || []),
+      {
+        id: `c_${Date.now()}`,
+        name: newChannelName.trim().toLowerCase().replace(/\s+/g, '-'),
+        type: newChannelType
+      }
+    ];
+
+    try {
+      const srvRef = doc(db, 'artifacts', appId, 'public', 'data', 'servers', currentServer.id);
+      await updateDoc(srvRef, { channels: updatedChannels });
+      setNewChannelName('');
+      setShowAddChannel(false);
+    } catch (err) {
+      console.error("Error creating channel:", err);
+    }
+  };
+
+  // --- CALL CONTROLS ---
+  const joinVoiceCall = (channelName) => {
+    setInCall(true);
+    setCallChannelName(channelName);
+    playWebAudioSound('join');
+  };
+
+  const leaveVoiceCall = () => {
+    setInCall(false);
+    setCallChannelName('');
+    setIsVideoOn(false);
+    setIsScreenSharing(false);
+    playWebAudioSound('leave');
+  };
+
+  // --- CHAT MESSAGES FILTERING ---
+  const currentMessages = messages
+    .filter(m => {
+      if (activeServerId === 'dm') {
+        if (!activeDmUser) return false;
+        return (
+          (m.authorId === currentUid && m.dmUserId === activeDmUser.id) ||
+          (m.authorId === activeDmUser.id && m.dmUserId === currentUid)
+        );
+      } else {
+        return m.channelId === activeChannelId;
+      }
+    })
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+  const filteredMessages = currentMessages.filter(m => 
+    (m.text || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (m.author || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // =========================================================
+  // AUTH SCREEN (IF NOT LOGGED IN SESSION)
+  // =========================================================
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#1e1f22] flex flex-col items-center justify-center text-white font-sans space-y-4">
+        <div className="w-12 h-12 border-4 border-[#5865f2] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-[#949ba4] font-medium">Connecting to Discord...</p>
+      </div>
+    );
+  }
+
+  if (!isLoggedInSession) {
+    return (
+      <div className="min-h-screen w-screen bg-[#313338] bg-cover bg-center flex items-center justify-center p-4 font-sans select-none relative overflow-hidden" style={{ backgroundImage: `url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1600&h=900&fit=crop')` }}>
+        {/* Dark Overlay */}
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+        {/* Auth Box Container */}
+        <div className="relative z-10 w-full max-w-md bg-[#313338] text-[#dbdee1] p-8 rounded-lg shadow-2xl border border-[#1f2023]">
+          
+          {/* Logo & Header */}
+          <div className="text-center mb-6">
+            <div className="w-12 h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <MessageSquare className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-white">
+              {authMode === 'login' ? "Welcome back!" : "Create an account"}
+            </h1>
+            <p className="text-xs text-[#949ba4] mt-1">
+              {authMode === 'login' ? "We're so excited to see you again!" : "Join servers, chat with friends, and customize your profile!"}
+            </p>
+          </div>
+
+          {/* Error Banner */}
+          {authError && (
+            <div className="mb-4 p-3 bg-[#f23f43]/20 border border-[#f23f43] rounded text-xs text-[#f23f43] flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-4">
+            {authMode === 'register' && (
+              <div>
+                <label className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider block mb-1.5">
+                  Display Name
+                </label>
+                <div className="relative flex items-center">
+                  <User className="w-4 h-4 text-[#949ba4] absolute left-3" />
+                  <input
+                    type="text"
+                    value={authDisplayName}
+                    onChange={(e) => setAuthDisplayName(e.target.value)}
+                    placeholder="GamerTag"
+                    className="w-full bg-[#1e1f22] text-white text-sm pl-9 pr-3 py-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2]"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider block mb-1.5">
+                Email Address
+              </label>
+              <div className="relative flex items-center">
+                <Mail className="w-4 h-4 text-[#949ba4] absolute left-3" />
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className="w-full bg-[#1e1f22] text-white text-sm pl-9 pr-3 py-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2]"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider block mb-1.5">
+                Password
+              </label>
+              <div className="relative flex items-center">
+                <Lock className="w-4 h-4 text-[#949ba4] absolute left-3" />
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-[#1e1f22] text-white text-sm pl-9 pr-3 py-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2]"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmittingAuth}
+              className="w-full bg-[#5865f2] hover:bg-indigo-600 disabled:bg-[#5865f2]/50 text-white font-medium py-2.5 rounded transition shadow text-sm mt-2 flex items-center justify-center space-x-2"
+            >
+              {isSubmittingAuth ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>{authMode === 'login' ? 'Log In' : 'Register'}</span>
+              )}
+            </button>
+          </form>
+
+          {/* Quick Divider */}
+          <div className="relative my-6 text-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-[#3f4147]" />
+            </div>
+            <span className="relative bg-[#313338] px-3 text-[11px] font-bold text-[#949ba4] uppercase">
+              OR
+            </span>
+          </div>
+
+          {/* Guest Fast Access Button */}
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            disabled={isSubmittingAuth}
+            className="w-full bg-[#2b2d31] hover:bg-[#35373c] text-white font-medium py-2.5 rounded transition border border-[#3f4147] text-xs flex items-center justify-center space-x-2"
+          >
+            <Sparkles className="w-4 h-4 text-[#23a55a]" />
+            <span>Continue as Guest (Quick Demo)</span>
+          </button>
+
+          {/* Toggle Auth Mode Switcher */}
+          <div className="mt-6 text-left text-xs text-[#949ba4]">
+            {authMode === 'login' ? (
+              <span>
+                Need an account?{' '}
+                <button
+                  onClick={() => {
+                    setAuthMode('register');
+                    setAuthError('');
+                  }}
+                  className="text-[#5865f2] hover:underline font-semibold"
+                >
+                  Register
+                </button>
+              </span>
+            ) : (
+              <span>
+                Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setAuthMode('login');
+                    setAuthError('');
+                  }}
+                  className="text-[#5865f2] hover:underline font-semibold"
+                >
+                  Log In
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // MAIN DISCORD INTERFACE (WHEN LOGGED IN)
+  // =========================================================
+  return (
+    <div 
+      className="flex h-screen text-[#dbdee1] font-sans antialiased overflow-hidden select-none transition-colors duration-300"
+      style={{ backgroundColor: activeTheme.mainBg, color: activeTheme.text }}
+    >
+      
+      {/* ========================================================= */}
+      {/* 1. LEFTMOST SERVER BAR                                     */}
+      {/* ========================================================= */}
+      <div 
+        className="w-[72px] flex flex-col items-center py-3 space-y-2 shrink-0 z-20 transition-colors duration-300"
+        style={{ backgroundColor: activeTheme.serverBg }}
+      >
+        {/* Direct Messages Icon */}
+        <button
+          onClick={() => setActiveServerId('dm')}
+          className={`relative group w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all duration-200 flex items-center justify-center ${
+            activeServerId === 'dm' ? 'rounded-[16px] text-white' : 'hover:text-white'
+          }`}
+          style={{
+            backgroundColor: activeServerId === 'dm' ? activeTheme.accent : activeTheme.mainBg,
+          }}
+          title="Direct Messages & Friends"
+        >
+          <MessageSquare className="w-6 h-6" />
+          <div className={`absolute -left-3 w-2 bg-white rounded-r-full transition-all duration-200 ${
+            activeServerId === 'dm' ? 'h-10' : 'h-0 group-hover:h-5'
+          }`} />
+        </button>
+
+        <div className="w-8 h-[2px] rounded my-1 opacity-20 bg-white" />
+
+        {/* Server List */}
+        <div className="flex-1 w-full space-y-2 overflow-y-auto no-scrollbar flex flex-col items-center">
+          {servers.map((server) => {
+            const isActive = activeServerId === server.id;
+            return (
+              <button
+                key={server.id}
+                onClick={() => {
+                  setActiveServerId(server.id);
+                  const firstText = server.channels?.find(c => c.type === 'text');
+                  if (firstText) setActiveChannelId(firstText.id);
+                }}
+                className="relative group w-12 h-12 flex items-center justify-center"
+                title={server.name}
+              >
+                <div className={`absolute -left-3 w-2 bg-white rounded-r-full transition-all duration-200 ${
+                  isActive ? 'h-10' : 'h-0 group-hover:h-5'
+                }`} />
+
+                <img
+                  src={server.icon}
+                  alt={server.name}
+                  className={`w-12 h-12 object-cover transition-all duration-200 ${
+                    isActive ? 'rounded-[16px]' : 'rounded-[24px] group-hover:rounded-[16px]'
+                  }`}
+                />
+              </button>
+            );
+          })}
+
+          {/* Add Server Button */}
+          <button
+            onClick={() => setShowAddServer(true)}
+            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] hover:text-white flex items-center justify-center transition-all duration-200"
+            style={{ backgroundColor: activeTheme.mainBg, color: activeTheme.accent }}
+            title="Create a Server"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Explore Button */}
+        <button 
+          onClick={() => {
+            if (servers.length > 0) {
+              setActiveServerId(servers[0].id);
+              setActiveChannelId(servers[0].channels?.[0]?.id || '');
+            }
+          }}
+          className="w-12 h-12 rounded-[24px] hover:rounded-[16px] hover:text-white flex items-center justify-center transition-all duration-200"
+          style={{ backgroundColor: activeTheme.mainBg, color: activeTheme.accent }}
+          title="Explore Servers"
+        >
+          <Compass className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 2. CHANNELS / DM SIDEBAR                                   */}
+      {/* ========================================================= */}
+      <div 
+        className="w-60 flex flex-col shrink-0 transition-colors duration-300 border-r"
+        style={{ backgroundColor: activeTheme.sidebarBg, borderColor: activeTheme.border }}
+      >
+        {/* Top Header */}
+        <div 
+          className="h-12 px-4 border-b flex items-center justify-between font-bold text-white shadow-sm hover:opacity-90 transition"
+          style={{ borderColor: activeTheme.border }}
+        >
+          {activeServerId === 'dm' ? (
+            <span className="truncate">Direct Messages</span>
+          ) : (
+            <>
+              <span className="truncate">{currentServer?.name || 'Server'}</span>
+              <ChevronDown className="w-5 h-5 text-[#949ba4]" />
+            </>
+          )}
+        </div>
+
+        {/* Sidebar Content */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {activeServerId === 'dm' ? (
+            <div>
+              {/* Friends Button */}
+              <button
+                onClick={() => setActiveDmUser(null)}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md mb-2 transition font-semibold ${
+                  !activeDmUser ? 'text-white' : 'text-[#949ba4] hover:bg-white/5'
+                }`}
+                style={{ backgroundColor: !activeDmUser ? activeTheme.accent + '33' : 'transparent' }}
+              >
+                <Users className="w-5 h-5" style={{ color: activeTheme.accent }} />
+                <span>Friends</span>
+              </button>
+
+              {/* Nitro Boost Promotion Button */}
+              <button
+                onClick={() => {
+                  setShowProfileSettings(true);
+                  setSettingsTab('nitro');
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-md mb-2 bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-indigo-500/20 border border-pink-500/30 text-white transition hover:scale-[1.02]"
+              >
+                <div className="flex items-center space-x-2">
+                  <Zap className="w-4 h-4 text-pink-400 animate-pulse" />
+                  <span className="text-xs font-bold text-pink-200 uppercase tracking-wider">Free Nitro Skins</span>
+                </div>
+                <Crown className="w-4 h-4 text-amber-400" />
+              </button>
+
+              <div className="text-xs font-semibold text-[#949ba4] px-2 py-1 uppercase tracking-wider flex items-center justify-between">
+                <span>Direct Messages</span>
+              </div>
+
+              {/* Friends in DMs */}
+              {acceptedFriends.map(friend => (
+                <button
+                  key={friend.id}
+                  onClick={() => setActiveDmUser(friend)}
+                  className={`w-full flex items-center space-x-3 px-2 py-2 rounded-md transition ${
+                    activeDmUser?.id === friend.id ? 'text-white' : 'text-[#949ba4] hover:bg-white/5'
+                  }`}
+                  style={{ backgroundColor: activeDmUser?.id === friend.id ? activeTheme.cardBg : 'transparent' }}
+                >
+                  <div className="relative">
+                    <Avatar 
+                      src={friend.avatar} 
+                      name={friend.name} 
+                      className="w-8 h-8 text-xs" 
+                      frameClass={getAvatarFrameClass(friend.nitroFrame)} 
+                    />
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
+                      friend.status === 'online' ? 'bg-[#23a55a]' : 'bg-[#80848e]'
+                    }`} />
+                  </div>
+                  <div className="flex-1 text-left truncate">
+                    <div className="text-sm font-medium leading-tight flex items-center gap-1">
+                      <span>{friend.name}</span>
+                      {friend.isNitro && renderNitroBadgeIcon(friend.nitroBadge, "w-3 h-3 shrink-0")}
+                    </div>
+                    <div className="text-[11px] text-[#949ba4] truncate">{friend.customStatus || 'Online'}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div>
+              {/* Text Channels List */}
+              <div className="text-xs font-semibold text-[#949ba4] px-2 py-1 uppercase tracking-wider flex items-center justify-between">
+                <span>Text Channels</span>
+                <button onClick={() => setShowAddChannel(true)} title="Create Channel">
+                  <Plus className="w-4 h-4 hover:text-white transition" />
+                </button>
+              </div>
+              {currentServer?.channels?.filter(c => c.type === 'text').map(channel => (
+                <button
+                  key={channel.id}
+                  onClick={() => setActiveChannelId(channel.id)}
+                  className={`w-full flex items-center space-x-2 px-2 py-1.5 rounded transition ${
+                    activeChannelId === channel.id ? 'text-white' : 'text-[#949ba4] hover:bg-white/5'
+                  }`}
+                  style={{ backgroundColor: activeChannelId === channel.id ? activeTheme.cardBg : 'transparent' }}
+                >
+                  <Hash className="w-5 h-5 text-[#80848e]" />
+                  <span className="text-sm font-medium truncate">{channel.name}</span>
+                </button>
+              ))}
+
+              {/* Voice Channels List */}
+              <div className="text-xs font-semibold text-[#949ba4] px-2 py-1 mt-4 uppercase tracking-wider flex items-center justify-between">
+                <span>Voice Channels</span>
+                <button onClick={() => setShowAddChannel(true)} title="Create Channel">
+                  <Plus className="w-4 h-4 hover:text-white transition" />
+                </button>
+              </div>
+              {currentServer?.channels?.filter(c => c.type === 'voice').map(channel => (
+                <button
+                  key={channel.id}
+                  onClick={() => joinVoiceCall(channel.name)}
+                  className="w-full flex items-center space-x-2 px-2 py-1.5 rounded text-[#949ba4] hover:bg-white/5 hover:text-white transition"
+                >
+                  <Volume2 className="w-5 h-5 text-[#80848e]" />
+                  <span className="text-sm font-medium truncate">{channel.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom User Profile Control Bar */}
+        <div 
+          className="h-16 px-2 flex items-center justify-between border-t transition-colors duration-300"
+          style={{ backgroundColor: activeTheme.serverBg, borderColor: activeTheme.border }}
+        >
+          <div 
+            onClick={() => {
+              setShowProfileSettings(true);
+              setSettingsTab('profile');
+            }}
+            className="flex items-center space-x-2 hover:bg-white/10 p-1.5 rounded cursor-pointer flex-1 min-w-0 mr-1 transition"
+          >
+            <div className="relative shrink-0">
+              <Avatar 
+                src={userProfile.avatar} 
+                name={userProfile.name} 
+                className="w-9 h-9 text-sm" 
+                frameClass={getAvatarFrameClass(userProfile.nitroFrame)} 
+              />
+              {userProfile.isNitro && (
+                <span className="absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full p-0.5 shadow">
+                  {renderNitroBadgeIcon(userProfile.nitroBadge, "w-2.5 h-2.5 text-white")}
+                </span>
+              )}
+              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#23a55a] border-2 border-[#1e1f22]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-white truncate leading-tight flex items-center gap-1">
+                <span>{userProfile.name}</span>
+              </div>
+              <div className="text-xs text-[#949ba4] truncate">{userProfile.customStatus || 'Online'}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-0.5 text-[#b5bac1]">
+            <button 
+              onClick={() => setIsMuted(!isMuted)} 
+              className={`p-1.5 rounded hover:bg-white/10 hover:text-white ${isMuted ? 'text-[#f23f43]' : ''}`}
+            >
+              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+            <button 
+              onClick={() => setIsDeafened(!isDeafened)} 
+              className={`p-1.5 rounded hover:bg-white/10 hover:text-white ${isDeafened ? 'text-[#f23f43]' : ''}`}
+            >
+              <Headphones className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => {
+                setShowProfileSettings(true);
+                setSettingsTab('profile');
+              }}
+              className="p-1.5 rounded hover:bg-white/10 hover:text-white"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 3. MAIN CONTENT AREA (FRIENDS / CHAT / CALLS)              */}
+      {/* ========================================================= */}
+      <div className="flex-1 flex flex-col relative min-w-0" style={{ backgroundColor: activeTheme.mainBg }}>
+        
+        {/* Top Header Bar */}
+        <div 
+          className="h-12 border-b px-4 flex items-center justify-between shadow-sm z-10 transition-colors duration-300"
+          style={{ backgroundColor: activeTheme.headerBg, borderColor: activeTheme.border }}
+        >
+          {activeServerId === 'dm' && !activeDmUser ? (
+            /* Friends Tab Navigation Header */
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 border-r pr-4" style={{ borderColor: activeTheme.border }}>
+                <Users className="w-5 h-5 text-[#80848e]" />
+                <span className="font-bold text-white">Friends</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                <button 
+                  onClick={() => setFriendsTab('online')}
+                  className={`px-2 py-1 rounded transition ${friendsTab === 'online' ? 'bg-white/10 text-white font-medium' : 'text-[#b5bac1] hover:bg-white/5'}`}
+                >
+                  Online
+                </button>
+                <button 
+                  onClick={() => setFriendsTab('all')}
+                  className={`px-2 py-1 rounded transition ${friendsTab === 'all' ? 'bg-white/10 text-white font-medium' : 'text-[#b5bac1] hover:bg-white/5'}`}
+                >
+                  All
+                </button>
+                <button 
+                  onClick={() => setFriendsTab('pending')}
+                  className={`px-2 py-1 rounded transition relative ${friendsTab === 'pending' ? 'bg-white/10 text-white font-medium' : 'text-[#b5bac1] hover:bg-white/5'}`}
+                >
+                  Pending
+                  {pendingRequests.length > 0 && (
+                    <span className="ml-1.5 bg-[#f23f43] text-white text-xs px-1.5 py-0.2 rounded-full">
+                      {pendingRequests.length}
+                    </span>
+                  )}
+                </button>
+                <button 
+                  onClick={() => setFriendsTab('add')}
+                  className={`px-2 py-1 rounded transition font-medium ${friendsTab === 'add' ? 'bg-[#23a55a]/20 text-[#23a55a]' : 'bg-[#23a55a] text-white hover:bg-green-600'}`}
+                >
+                  Add Friend
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Active Channel or Active DM Header */
+            <div className="flex items-center space-x-2 min-w-0">
+              {activeServerId === 'dm' ? (
+                <>
+                  <span className="text-[#80848e] text-xl font-bold">@</span>
+                  <span className="font-bold text-white truncate">{activeDmUser?.name}</span>
+                  {activeDmUser?.isNitro && (
+                    <span className="bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1">
+                      {renderNitroBadgeIcon(activeDmUser.nitroBadge, "w-3 h-3 text-white")} NITRO
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Hash className="w-6 h-6 text-[#80848e]" />
+                  <span className="font-bold text-white truncate">{currentChannel?.name || 'channel'}</span>
+                  <span className="text-xs text-[#949ba4] border-l border-[#4e5058] pl-3 ml-2 truncate">
+                    Welcome to #{currentChannel?.name || 'channel'}!
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Action Header Icons */}
+          <div className="flex items-center space-x-3 text-[#b5bac1]">
+            {activeServerId === 'dm' && activeDmUser && (
+              <>
+                <button 
+                  onClick={() => joinVoiceCall(`DM with ${activeDmUser?.name}`)}
+                  className="hover:text-white transition" 
+                  title="Start Voice Call"
+                >
+                  <Phone className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => {
+                    joinVoiceCall(`DM with ${activeDmUser?.name}`);
+                    setIsVideoOn(true);
+                  }}
+                  className="hover:text-white transition" 
+                  title="Start Video Call"
+                >
+                  <Video className="w-5 h-5" />
+                </button>
+              </>
+            )}
+
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="text-xs text-white placeholder-[#949ba4] px-2 py-1 pr-6 rounded focus:outline-none w-32 focus:w-44 transition-all"
+                style={{ backgroundColor: activeTheme.serverBg }}
+              />
+              <Search className="w-3.5 h-3.5 text-[#949ba4] absolute right-2 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* VOICE / VIDEO CALL OVERLAY */}
+        {inCall && (
+          <div className="bg-[#111214] p-4 flex flex-col items-center justify-center border-b border-[#232428]">
+            <div className="flex items-center justify-between w-full max-w-4xl mb-4">
+              <div className="flex items-center space-x-2 text-white font-semibold">
+                <Radio className="w-5 h-5 text-[#23a55a] animate-pulse" />
+                <span>Voice Connected: {callChannelName}</span>
+              </div>
+              <span className="text-xs text-[#23a55a] bg-[#23a55a]/10 px-2 py-1 rounded">RTC Active</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-4xl h-44 mb-4">
+              <div className="bg-[#2b2d31] rounded-lg overflow-hidden flex flex-col items-center justify-center relative border-2 border-[#23a55a]">
+                {isVideoOn ? (
+                  <div className="w-full h-full bg-slate-800 flex items-center justify-center text-slate-300 font-mono text-sm">
+                    📷 Live Video Stream Active
+                  </div>
+                ) : (
+                  <Avatar src={userProfile.avatar} name={userProfile.name} className="w-16 h-16 text-2xl" frameClass={getAvatarFrameClass(userProfile.nitroFrame)} />
+                )}
+                <span className="absolute bottom-2 left-2 text-xs bg-black/60 px-2 py-0.5 rounded text-white">{userProfile.name} (You)</span>
+              </div>
+
+              <div className="bg-[#2b2d31] rounded-lg overflow-hidden flex flex-col items-center justify-center relative">
+                <Avatar src={activeDmUser?.avatar || userProfile.avatar} name={activeDmUser?.name || 'Partner'} className="w-16 h-16 text-2xl" frameClass={getAvatarFrameClass(activeDmUser?.nitroFrame)} />
+                <span className="absolute bottom-2 left-2 text-xs bg-black/60 px-2 py-0.5 rounded text-white">
+                  {activeDmUser?.name || 'Call Participant'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <button 
+                onClick={() => setIsVideoOn(!isVideoOn)} 
+                className={`p-3 rounded-full transition ${isVideoOn ? 'bg-white text-black' : 'bg-[#2b2d31] text-white hover:bg-[#35373c]'}`}
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setIsMuted(!isMuted)} 
+                className={`p-3 rounded-full transition ${isMuted ? 'bg-[#f23f43] text-white' : 'bg-[#2b2d31] text-white hover:bg-[#35373c]'}`}
+              >
+                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+              <button 
+                onClick={leaveVoiceCall} 
+                className="p-3 rounded-full bg-[#f23f43] text-white hover:bg-red-600 transition"
+                title="Disconnect"
+              >
+                <PhoneOff className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* MAIN BODY CONTENT */}
+        {activeServerId === 'dm' && !activeDmUser ? (
+          /* ==================== FRIENDS DASHBOARD ==================== */
+          <div className="flex-1 overflow-y-auto p-6">
+            {friendsTab === 'add' ? (
+              <div className="max-w-xl space-y-4">
+                <h2 className="text-xl font-bold text-white uppercase tracking-wider">Add Friend</h2>
+                <p className="text-xs text-[#949ba4]">You can add friends with their Display Name or User ID.</p>
+                
+                <form onSubmit={handleSendFriendRequest} className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={friendSearchInput}
+                    onChange={(e) => {
+                      setFriendSearchInput(e.target.value);
+                      setFriendActionStatus({ type: '', msg: '' });
+                    }}
+                    placeholder="Enter User ID or Display Name..."
+                    className="w-full p-3 pr-32 rounded-lg border focus:outline-none text-sm"
+                    style={{ backgroundColor: activeTheme.serverBg, borderColor: activeTheme.border }}
+                  />
+                  <button
+                    type="submit"
+                    className="absolute right-2 text-white font-medium text-xs px-4 py-2 rounded transition"
+                    style={{ backgroundColor: activeTheme.accent }}
+                  >
+                    Send Friend Request
+                  </button>
+                </form>
+
+                {friendActionStatus.msg && (
+                  <div className={`p-3 rounded text-xs flex items-center space-x-2 ${
+                    friendActionStatus.type === 'success' ? 'bg-[#23a55a]/20 text-[#23a55a]' : 'bg-[#f23f43]/20 text-[#f23f43]'
+                  }`}>
+                    {friendActionStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                    <span>{friendActionStatus.msg}</span>
+                  </div>
+                )}
+              </div>
+            ) : friendsTab === 'pending' ? (
+              <div className="space-y-4">
+                <h2 className="text-xs font-bold text-[#949ba4] uppercase tracking-wider">
+                  Pending Requests — {pendingRequests.length}
+                </h2>
+                {pendingRequests.length === 0 ? (
+                  <div className="text-sm text-[#949ba4] py-8 text-center">No pending friend requests right now.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingRequests.map(req => (
+                      <div 
+                        key={req.id} 
+                        className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition"
+                        style={{ backgroundColor: activeTheme.cardBg }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Avatar src={req.fromAvatar} name={req.fromName} className="w-10 h-10 text-sm" />
+                          <div>
+                            <div className="text-sm font-bold text-white">{req.fromName}</div>
+                            <div className="text-xs text-[#949ba4]">Incoming Friend Request</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleAcceptFriendRequest(req.id)}
+                            className="p-2 bg-[#23a55a] hover:bg-green-600 text-white rounded-full transition"
+                            title="Accept Request"
+                          >
+                            <UserCheck className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleRejectFriendRequest(req.id)}
+                            className="p-2 bg-[#f23f43] hover:bg-red-600 text-white rounded-full transition"
+                            title="Decline Request"
+                          >
+                            <UserX className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* All or Online Friends List */
+              <div className="space-y-4">
+                <h2 className="text-xs font-bold text-[#949ba4] uppercase tracking-wider">
+                  {friendsTab === 'online' ? 'Online Friends' : 'All Friends'} — {acceptedFriends.length}
+                </h2>
+                {acceptedFriends.length === 0 ? (
+                  <div className="text-sm text-[#949ba4] py-8 text-center">No friends added yet. Click "Add Friend" above to add someone!</div>
+                ) : (
+                  <div className="space-y-2">
+                    {acceptedFriends.map(friend => (
+                      <div 
+                        key={friend.id} 
+                        className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition group"
+                        style={{ backgroundColor: activeTheme.cardBg }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="relative">
+                            <Avatar 
+                              src={friend.avatar} 
+                              name={friend.name} 
+                              className="w-10 h-10 text-sm" 
+                              frameClass={getAvatarFrameClass(friend.nitroFrame)} 
+                            />
+                            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
+                              friend.status === 'online' ? 'bg-[#23a55a]' : 'bg-[#80848e]'
+                            }`} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white flex items-center gap-1">
+                              <span>{friend.name}</span>
+                              {friend.isNitro && renderNitroBadgeIcon(friend.nitroBadge, "w-3.5 h-3.5 shrink-0")}
+                            </div>
+                            <div className="text-xs text-[#949ba4]">{friend.customStatus || 'Online'}</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setActiveDmUser(friend)}
+                          className="p-2.5 bg-[#313338] group-hover:bg-[#5865f2] text-[#dbdee1] group-hover:text-white rounded-full transition"
+                          title="Message Friend"
+                        >
+                          <MessageSquare className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ==================== CHAT VIEW ==================== */
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Messages Scroll Region */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="mt-4 mb-6">
+                <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-2 overflow-hidden">
+                  {activeServerId === 'dm' ? (
+                    <Avatar src={activeDmUser?.avatar} name={activeDmUser?.name || 'User'} className="w-16 h-16 text-2xl" frameClass={getAvatarFrameClass(activeDmUser?.nitroFrame)} />
+                  ) : (
+                    <Hash className="w-10 h-10 text-white" />
+                  )}
+                </div>
+                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <span>{activeServerId === 'dm' ? activeDmUser?.name : `Welcome to #${currentChannel?.name || 'channel'}!`}</span>
+                  {activeServerId === 'dm' && activeDmUser?.isNitro && (
+                    renderNitroBadgeIcon(activeDmUser.nitroBadge, "w-5 h-5 text-pink-400")
+                  )}
+                </h1>
+                <p className="text-[#949ba4] text-sm">
+                  This is the start of the {activeServerId === 'dm' ? `direct message thread with ${activeDmUser?.name}` : `#${currentChannel?.name || 'channel'} channel`}.
+                </p>
+              </div>
+
+              <div className="w-full h-[1px] bg-white/10 my-4" />
+
+              {/* Message Items */}
+              {filteredMessages.map((msg) => (
+                <div 
+                  key={msg.id} 
+                  className={`group relative flex space-x-4 hover:bg-white/5 -mx-4 px-4 py-1.5 rounded transition ${
+                    msg.nitroGlow ? 'shadow-[0_0_15px_rgba(236,72,153,0.15)] border-l-2 border-pink-500/80' : ''
+                  }`}
+                >
+                  <Avatar 
+                    src={msg.avatar} 
+                    name={msg.author} 
+                    className="w-10 h-10 text-sm mt-0.5 shrink-0" 
+                    frameClass={getAvatarFrameClass(msg.nitroFrame)} 
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-semibold text-white text-sm hover:underline cursor-pointer flex items-center gap-1">
+                        <span>{msg.author}</span>
+                        {msg.isNitro && (
+                          <span className="bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[9px] px-1.5 py-0.2 rounded font-bold tracking-wider flex items-center gap-1" title="Nitro User">
+                            {renderNitroBadgeIcon(msg.nitroBadge, "w-2.5 h-2.5 text-white")}
+                            <span>NITRO</span>
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[11px] text-[#949ba4]">{msg.time}</span>
+                    </div>
+                    
+                    {msg.text && (
+                      <div className="text-[#dbdee1] text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</div>
+                    )}
+
+                    {msg.image && (
+                      <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-white/10">
+                        <img src={msg.image} alt="Attachment" className="max-h-60 w-auto object-cover" />
+                      </div>
+                    )}
+
+                    {/* Reactions */}
+                    {Object.keys(msg.reactions || {}).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {Object.entries(msg.reactions).map(([emoji, usersList]) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleAddReaction(msg.id, emoji)}
+                            className={`flex items-center space-x-1 px-2 py-0.5 rounded text-xs border transition ${
+                              usersList.includes(currentUid)
+                                ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
+                                : 'bg-white/5 border-transparent text-[#b5bac1] hover:bg-white/10'
+                            }`}
+                          >
+                            <span>{emoji}</span>
+                            <span>{usersList.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hover Quick Actions */}
+                  <div 
+                    className="absolute right-4 -top-3 hidden group-hover:flex items-center border rounded shadow-md px-1 py-0.5 space-x-1 text-[#b5bac1]"
+                    style={{ backgroundColor: activeTheme.serverBg, borderColor: activeTheme.border }}
+                  >
+                    <button onClick={() => handleAddReaction(msg.id, '👍')} className="p-1 hover:bg-white/10 hover:text-white rounded">👍</button>
+                    <button onClick={() => handleAddReaction(msg.id, '❤️')} className="p-1 hover:bg-white/10 hover:text-white rounded">❤️</button>
+                    <button onClick={() => handleAddReaction(msg.id, '🔥')} className="p-1 hover:bg-white/10 hover:text-white rounded">🔥</button>
+                    {msg.authorId === currentUid && (
+                      <button onClick={() => handleDeleteMessage(msg.id)} className="p-1 hover:bg-white/10 hover:text-red-400 rounded" title="Delete Message">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input Form Bar */}
+            <div className="px-4 pb-6">
+              <form 
+                onSubmit={handleSendMessage} 
+                className="rounded-lg p-2.5 flex items-center space-x-3 transition-colors duration-300"
+                style={{ backgroundColor: activeTheme.inputBg }}
+              >
+                <button 
+                  type="button" 
+                  onClick={() => setShowImageModal(true)}
+                  className="p-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+                  title="Attach Image"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={
+                    activeServerId === 'dm'
+                      ? `Message @${activeDmUser?.name || 'User'}`
+                      : `Message #${currentChannel?.name || 'channel'}`
+                  }
+                  className="flex-1 bg-transparent text-white placeholder-[#80848e] focus:outline-none text-sm"
+                />
+
+                <div className="flex items-center space-x-2 text-[#b5bac1] relative">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowSoundboard(!showSoundboard)} 
+                    className="hover:text-white transition"
+                    title="Nitro Soundboard"
+                  >
+                    <Sparkles className="w-5 h-5 text-pink-400" />
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                    className="hover:text-white transition"
+                    title="Select Emoji"
+                  >
+                    <Smile className="w-5 h-5" />
+                  </button>
+
+                  <button 
+                    type="submit" 
+                    className="hover:opacity-80 transition"
+                    style={{ color: activeTheme.accent }}
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+
+                  {/* Emoji Picker Popup */}
+                  {showEmojiPicker && (
+                    <div 
+                      className="absolute right-0 bottom-12 border rounded-lg p-3 shadow-xl grid grid-cols-5 gap-2 z-50"
+                      style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.border }}
+                    >
+                      {['😀', '😂', '🔥', '🚀', '🎉', '👍', '❤️', '👀', '💯', '💩', '👑', '⚡', '💎', '🎮', '✨'].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            setInputText(prev => prev + emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                          className="text-xl p-1 hover:bg-white/10 rounded"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Soundboard Popup */}
+                  {showSoundboard && (
+                    <div 
+                      className="absolute right-0 bottom-12 border rounded-lg p-3 shadow-xl w-52 space-y-1 z-50"
+                      style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.border }}
+                    >
+                      <div className="text-xs font-bold text-pink-400 mb-2 flex items-center justify-between">
+                        <span>NITRO SOUNDBOARD</span>
+                        <Zap className="w-3.5 h-3.5" />
+                      </div>
+                      {SOUNDS.map(sound => (
+                        <button
+                          key={sound.name}
+                          type="button"
+                          onClick={() => {
+                            playWebAudioSound(sound.type);
+                            setShowSoundboard(false);
+                          }}
+                          className="w-full text-left text-xs text-white p-2 hover:bg-white/10 rounded flex items-center space-x-2 transition"
+                        >
+                          <span>{sound.emoji}</span>
+                          <span>{sound.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================= */}
+      {/* 4. RIGHTMOST MEMBER SIDEBAR                                */}
+      {/* ========================================================= */}
+      {activeServerId !== 'dm' && (
+        <div 
+          className="w-60 hidden lg:flex flex-col p-4 shrink-0 border-l overflow-y-auto transition-colors duration-300"
+          style={{ backgroundColor: activeTheme.sidebarBg, borderColor: activeTheme.border }}
+        >
+          <div className="text-xs font-semibold text-[#949ba4] mb-2 uppercase tracking-wider">
+            Members — {allUsers.length}
+          </div>
+          <div className="space-y-1 mb-6">
+            {allUsers.map(member => (
+              <div key={member.id} className="flex items-center space-x-3 p-1.5 rounded hover:bg-white/5 cursor-pointer group">
+                <div className="relative shrink-0">
+                  <Avatar 
+                    src={member.avatar} 
+                    name={member.name} 
+                    className="w-8 h-8 text-xs" 
+                    frameClass={getAvatarFrameClass(member.nitroFrame)} 
+                  />
+                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#2b2d31] ${
+                    member.status === 'online' ? 'bg-[#23a55a]' : 'bg-[#f0b232]'
+                  }`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-1">
+                    <span className="text-sm font-medium text-[#dbdee1] group-hover:text-white truncate">{member.name}</span>
+                    {member.isNitro && renderNitroBadgeIcon(member.nitroBadge, "w-3 h-3 shrink-0")}
+                  </div>
+                  {member.customStatus && (
+                    <div className="text-[11px] text-[#949ba4] truncate">{member.customStatus}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODALS                                                    */}
+      {/* ========================================================= */}
+
+      {/* 1. IMAGE ATTACHMENT MODAL */}
+      {showImageModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#313338] text-white rounded-lg w-full max-w-md p-6 relative shadow-2xl">
+            <button onClick={() => setShowImageModal(false)} className="absolute top-4 right-4 text-[#949ba4] hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-bold mb-2">Attach Image</h2>
+            <p className="text-xs text-[#949ba4] mb-4">Upload from your computer or paste an image URL.</p>
+
+            {/* File Upload Trigger */}
+            <div className="mb-4">
+              <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">Upload Image File</label>
+              <label className="flex items-center justify-center space-x-2 bg-[#1e1f22] hover:bg-[#232428] border-2 border-dashed border-[#3f4147] hover:border-[#5865f2] rounded-lg p-4 cursor-pointer transition">
+                <Upload className="w-5 h-5 text-[#949ba4]" />
+                <span className="text-xs text-[#b5bac1]">Click to select an image from your device</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={(e) => handleFileUpload(e, setImageUrlInput)} 
+                  className="hidden" 
+                />
+              </label>
+            </div>
+
+            <div className="text-center text-xs text-[#949ba4] mb-4">— OR PASTE IMAGE URL —</div>
+
+            <input 
+              type="text" 
+              value={imageUrlInput}
+              onChange={(e) => setImageUrlInput(e.target.value)}
+              placeholder="https://images.unsplash.com/..."
+              className="w-full bg-[#1e1f22] text-white p-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2] text-sm mb-4"
+            />
+
+            {imageUrlInput && (
+              <div className="mb-4 max-h-32 rounded overflow-hidden flex justify-center bg-[#1e1f22] p-2">
+                <img src={imageUrlInput} alt="Preview" className="max-h-28 object-contain" />
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3">
+              <button onClick={() => setShowImageModal(false)} className="text-sm text-[#949ba4] hover:underline">Cancel</button>
+              <button onClick={handleSendMessage} className="bg-[#5865f2] hover:bg-indigo-600 px-4 py-2 rounded text-sm font-medium">Attach & Send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. ADD SERVER MODAL */}
+      {showAddServer && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#313338] text-white rounded-lg w-full max-w-md p-6 relative shadow-2xl">
+            <button onClick={() => setShowAddServer(false)} className="absolute top-4 right-4 text-[#949ba4] hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+            <h2 className="text-2xl font-bold text-center mb-2">Create Your Server</h2>
+            <p className="text-sm text-[#949ba4] text-center mb-6">Create a custom server that syncs in real-time.</p>
+
+            <form onSubmit={handleCreateServer} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">Server Icon</label>
+                <div className="flex items-center space-x-4">
+                  <img src={newServerIcon} alt="Server Icon" className="w-12 h-12 rounded-full object-cover border" />
+                  <label className="cursor-pointer bg-[#1e1f22] hover:bg-[#232428] text-xs px-3 py-2 rounded border border-[#3f4147] flex items-center space-x-2">
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Image File</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => handleFileUpload(e, setNewServerIcon)} 
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">Server Name</label>
+                <input
+                  type="text"
+                  value={newServerName}
+                  onChange={(e) => setNewServerName(e.target.value)}
+                  placeholder="e.g. Chill Gaming Squad"
+                  className="w-full bg-[#1e1f22] text-white p-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2]"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-between items-center bg-[#2b2d31] -mx-6 -mb-6 p-4 rounded-b-lg mt-6">
+                <button type="button" onClick={() => setShowAddServer(false)} className="text-sm hover:underline text-white">Cancel</button>
+                <button type="submit" className="bg-[#5865f2] hover:bg-indigo-600 text-white font-medium px-6 py-2 rounded transition">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. CREATE CHANNEL MODAL */}
+      {showAddChannel && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#313338] text-white rounded-lg w-full max-w-md p-6 relative shadow-2xl">
+            <button onClick={() => setShowAddChannel(false)} className="absolute top-4 right-4 text-[#949ba4] hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-bold mb-4">Create Channel</h2>
+
+            <form onSubmit={handleCreateChannel} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">Channel Type</label>
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-3 bg-[#2b2d31] p-3 rounded cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="channelType" 
+                      value="text" 
+                      checked={newChannelType === 'text'} 
+                      onChange={() => setNewChannelType('text')}
+                      className="accent-[#5865f2]" 
+                    />
+                    <Hash className="w-5 h-5 text-[#949ba4]" />
+                    <div>
+                      <div className="text-sm font-semibold">Text</div>
+                      <div className="text-xs text-[#949ba4]">Post messages, images, and emojis</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center space-x-3 bg-[#2b2d31] p-3 rounded cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="channelType" 
+                      value="voice" 
+                      checked={newChannelType === 'voice'} 
+                      onChange={() => setNewChannelType('voice')}
+                      className="accent-[#5865f2]" 
+                    />
+                    <Volume2 className="w-5 h-5 text-[#949ba4]" />
+                    <div>
+                      <div className="text-sm font-semibold">Voice</div>
+                      <div className="text-xs text-[#949ba4]">Hang out with voice and screen share</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">Channel Name</label>
+                <input
+                  type="text"
+                  value={newChannelName}
+                  onChange={(e) => setNewChannelName(e.target.value)}
+                  placeholder="new-channel"
+                  className="w-full bg-[#1e1f22] text-white p-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2]"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 bg-[#2b2d31] -mx-6 -mb-6 p-4 rounded-b-lg mt-6">
+                <button type="button" onClick={() => setShowAddChannel(false)} className="text-sm hover:underline text-white px-4">Cancel</button>
+                <button type="submit" className="bg-[#5865f2] hover:bg-indigo-600 text-white font-medium px-6 py-2 rounded transition">Create Channel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. USER PROFILE & NITRO SKINS SETTINGS MODAL */}
+      {showProfileSettings && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#313338] text-white rounded-lg w-full max-w-2xl overflow-hidden relative shadow-2xl flex flex-col md:flex-row h-[560px]">
+            <button onClick={() => setShowProfileSettings(false)} className="absolute top-4 right-4 text-[#949ba4] hover:text-white z-20">
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Left Tabs Menu */}
+            <div className="w-full md:w-48 bg-[#2b2d31] p-4 space-y-2 shrink-0 border-r border-[#1f2023] flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-[#949ba4] uppercase tracking-wider px-2 py-1">User Settings</div>
+                
+                <button
+                  onClick={() => setSettingsTab('profile')}
+                  className={`w-full text-left px-3 py-2 rounded text-sm font-medium flex items-center space-x-2 transition ${
+                    settingsTab === 'profile' ? 'bg-[#404249] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>My Account</span>
+                </button>
+
+                <button
+                  onClick={() => setSettingsTab('nitro')}
+                  className={`w-full text-left px-3 py-2 rounded text-sm font-bold flex items-center space-x-2 transition ${
+                    settingsTab === 'nitro' ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow' : 'text-pink-400 hover:bg-white/5'
+                  }`}
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>Nitro & Skins</span>
+                </button>
+              </div>
+
+              {/* Log Out Button */}
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-3 py-2 rounded text-xs font-bold text-[#f23f43] hover:bg-[#f23f43]/10 flex items-center space-x-2 transition"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Log Out</span>
+              </button>
+            </div>
+
+            {/* Right Settings Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-[#313338]">
+              {settingsTab === 'profile' ? (
+                /* MY ACCOUNT TAB */
+                <div className="space-y-5">
+                  <h2 className="text-xl font-bold">My Account</h2>
+
+                  {/* Profile Card Live Preview */}
+                  <div className="rounded-lg overflow-hidden bg-[#1e1f22] border border-[#232428] relative shadow">
+                    <div 
+                      className="h-20 bg-cover bg-center" 
+                      style={{ backgroundImage: `url(${userProfile.banner})` }}
+                    />
+                    <div className="p-4 relative pt-10">
+                      <div className="absolute -top-8 left-4">
+                        <Avatar 
+                          src={userProfile.avatar} 
+                          name={userProfile.name} 
+                          className="w-16 h-16 text-2xl border-4 border-[#1e1f22] shadow-md" 
+                          frameClass={getAvatarFrameClass(userProfile.nitroFrame)} 
+                        />
+                      </div>
+                      <div className="font-bold text-lg flex items-center gap-1.5">
+                        <span>{userProfile.name}</span>
+                        {userProfile.isNitro && (
+                          <span className="bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[9px] px-1.5 py-0.2 rounded font-bold uppercase flex items-center gap-1">
+                            {renderNitroBadgeIcon(userProfile.nitroBadge, "w-3 h-3 text-white")} NITRO
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-[#949ba4]">{userProfile.customStatus || 'Online'}</div>
+                    </div>
+                  </div>
+
+                  {/* Avatar Upload Field */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">
+                      Profile Avatar
+                    </label>
+                    <div className="flex items-center space-x-3">
+                      <Avatar src={userProfile.avatar} name={userProfile.name} className="w-12 h-12 text-lg border" />
+                      <label className="cursor-pointer bg-[#1e1f22] hover:bg-[#232428] text-xs text-white px-4 py-2.5 rounded border border-[#3f4147] flex items-center space-x-2 transition">
+                        <Upload className="w-4 h-4" />
+                        <span>Upload Custom Image</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={(e) => handleFileUpload(e, (res) => setUserProfile({ ...userProfile, avatar: res }))} 
+                          className="hidden" 
+                        />
+                      </label>
+                      {userProfile.avatar && (
+                        <button
+                          type="button"
+                          onClick={() => setUserProfile({ ...userProfile, avatar: '' })}
+                          className="text-xs text-[#f23f43] hover:underline"
+                        >
+                          Remove Image (Use Letter Avatar)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Banner Upload Field */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2">
+                      Profile Banner (Upload Image File)
+                    </label>
+                    <label className="cursor-pointer bg-[#1e1f22] hover:bg-[#232428] text-xs text-white p-3 rounded border border-[#3f4147] flex items-center justify-center space-x-2 transition">
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Banner File</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => handleFileUpload(e, (res) => setUserProfile({ ...userProfile, banner: res }))} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+
+                  {/* Display Name */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-1">Display Name</label>
+                    <input 
+                      type="text" 
+                      value={userProfile.name} 
+                      onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
+                      className="w-full bg-[#1e1f22] text-white p-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2] text-sm"
+                    />
+                  </div>
+
+                  {/* Custom Status */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-1">Custom Status</label>
+                    <input 
+                      type="text" 
+                      value={userProfile.customStatus} 
+                      onChange={(e) => setUserProfile({ ...userProfile, customStatus: e.target.value })}
+                      className="w-full bg-[#1e1f22] text-white p-2.5 rounded border border-[#232428] focus:outline-none focus:border-[#5865f2] text-sm"
+                    />
+                  </div>
+
+                  {/* User ID */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-1">Your User ID</label>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={currentUid || ''} 
+                        className="w-full bg-[#1e1f22] text-xs text-[#949ba4] p-2 rounded border border-[#232428]" 
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => currentUid && navigator.clipboard.writeText(currentUid)}
+                        className="p-2 bg-[#5865f2] hover:bg-indigo-600 rounded text-white text-xs flex items-center space-x-1 shrink-0"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* NITRO & SKINS TAB */
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-indigo-500/20 p-4 rounded-lg border border-pink-500/30">
+                    <div className="flex items-center space-x-3">
+                      <Crown className="w-8 h-8 text-amber-400" />
+                      <div>
+                        <h2 className="text-lg font-bold text-white">Free Nitro Customization</h2>
+                        <p className="text-xs text-pink-200">Unlock custom Nitro icon badges, avatar frame borders, skins, and sounds.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nitro Icon Badge Selection */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2 flex items-center gap-1">
+                      <Zap className="w-4 h-4 text-pink-400" />
+                      <span>Nitro Badge Icon</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {NITRO_BADGES.map(badge => {
+                        const IconComp = badge.icon;
+                        const isSelected = (userProfile.nitroBadge || 'zap') === badge.id;
+                        return (
+                          <button
+                            key={badge.id}
+                            type="button"
+                            onClick={() => setUserProfile({ ...userProfile, nitroBadge: badge.id })}
+                            className={`p-2.5 rounded-lg border flex items-center space-x-2 text-xs font-bold transition ${
+                              isSelected ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-[#1e1f22] border-[#232428] text-[#949ba4] hover:bg-[#232428]'
+                            }`}
+                          >
+                            <IconComp className={`w-4 h-4 ${badge.color}`} />
+                            <span className="truncate">{badge.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Nitro Avatar Frame / Decoration Selection */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-2 flex items-center gap-1">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <span>Avatar Frame Border</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {NITRO_FRAMES.map(frame => {
+                        const isSelected = (userProfile.nitroFrame || 'neon') === frame.id;
+                        return (
+                          <button
+                            key={frame.id}
+                            type="button"
+                            onClick={() => setUserProfile({ ...userProfile, nitroFrame: frame.id })}
+                            className={`p-2 rounded-lg border flex items-center space-x-2 text-xs font-bold transition ${
+                              isSelected ? 'bg-purple-500/20 border-purple-500 text-white' : 'bg-[#1e1f22] border-[#232428] text-[#949ba4] hover:bg-[#232428]'
+                            }`}
+                          >
+                            <Avatar src={userProfile.avatar} name={userProfile.name} className="w-6 h-6 text-[10px]" frameClass={frame.class} />
+                            <span className="truncate">{frame.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Nitro Perks Toggles */}
+                  <div className="space-y-3 bg-[#1e1f22] p-4 rounded-lg border border-[#232428]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                          <Zap className="w-4 h-4 text-pink-400" />
+                          <span>Show Nitro Badge on Profile</span>
+                        </div>
+                        <div className="text-xs text-[#949ba4]">Displays a shiny Nitro icon next to your username.</div>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={userProfile.isNitro} 
+                        onChange={(e) => setUserProfile({ ...userProfile, isNitro: e.target.checked })}
+                        className="w-5 h-5 accent-pink-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="w-full h-[1px] bg-[#232428]" />
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-purple-400" />
+                          <span>Nitro Message Glow Effect</span>
+                        </div>
+                        <div className="text-xs text-[#949ba4]">Adds a neon ambient glow to your chat messages.</div>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={userProfile.nitroGlow} 
+                        onChange={(e) => setUserProfile({ ...userProfile, nitroGlow: e.target.checked })}
+                        className="w-5 h-5 accent-pink-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {/* App Theme / Skin Selection */}
+                  <div>
+                    <label className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider block mb-3 flex items-center gap-1">
+                      <Palette className="w-4 h-4 text-pink-400" />
+                      <span>Select App Skin Theme</span>
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.values(THEMES).map(theme => (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => setUserProfile({ ...userProfile, theme: theme.id })}
+                          className={`p-3 rounded-lg border text-left transition relative flex flex-col justify-between h-20 ${
+                            userProfile.theme === theme.id ? 'border-pink-500 ring-2 ring-pink-500/30' : 'border-[#3f4147] hover:border-white/40'
+                          }`}
+                          style={{ backgroundColor: theme.mainBg }}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-bold" style={{ color: theme.text }}>{theme.name}</span>
+                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: theme.accent }} />
+                          </div>
+
+                          <div className="flex space-x-1.5 mt-2">
+                            <div className="w-4 h-4 rounded" style={{ backgroundColor: theme.serverBg }} />
+                            <div className="w-4 h-4 rounded" style={{ backgroundColor: theme.sidebarBg }} />
+                            <div className="w-4 h-4 rounded" style={{ backgroundColor: theme.cardBg }} />
+                            <div className="w-4 h-4 rounded" style={{ backgroundColor: theme.accent }} />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
